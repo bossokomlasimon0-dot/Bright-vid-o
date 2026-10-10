@@ -1,0 +1,6 @@
+{
+  "name": "Bright Video",
+  "description": "Plateforme communautaire de partage et découverte de vidéos, tutoriels, articles, musiques et documents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

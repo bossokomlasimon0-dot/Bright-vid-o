@@ -1,0 +1,218 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (('email' in request.auth.token) && request.auth.token.email == "bossokomlasimon0@gmail.com" && request.auth.token.email_verified == true) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 60 &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 120)) &&
+             (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 1000)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 500)) &&
+             (!('role' in data) || (data.role in ['user', 'admin'])) &&
+             (!('subscriberCount' in data) || data.subscriberCount is int);
+    }
+
+    function isValidPublication(data) {
+      return data.title is string && data.title.size() >= 2 && data.title.size() <= 150 &&
+             data.type in ['video', 'tutorial', 'article', 'music', 'download', 'document', 'photo'] &&
+             data.category is string && data.category.size() >= 2 && data.category.size() <= 50 &&
+             data.externalUrl is string && data.externalUrl.size() >= 5 && data.externalUrl.size() <= 2048 &&
+             data.authorId is string && data.authorId.size() <= 128 &&
+             data.status in ['pending', 'approved', 'rejected'] &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+             (!('thumbnailUrl' in data) || (data.thumbnailUrl is string && data.thumbnailUrl.size() <= 2048)) &&
+             (!('content' in data) || (data.content is string && data.content.size() <= 50000)) &&
+             (!('authorName' in data) || (data.authorName is string && data.authorName.size() <= 60)) &&
+             (!('authorAvatarUrl' in data) || (data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 1000)) &&
+             (!('rejectionReason' in data) || (data.rejectionReason is string && data.rejectionReason.size() <= 500)) &&
+             (!('viewsCount' in data) || data.viewsCount is int) &&
+             (!('likesCount' in data) || data.likesCount is int) &&
+             (!('commentsCount' in data) || data.commentsCount is int) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 10 && (data.tags.size() == 0 || data.tags[0] is string)));
+    }
+
+    function isValidComment(data) {
+      return data.publicationId is string && data.publicationId.size() <= 128 &&
+             data.authorId is string && data.authorId.size() <= 128 &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 1000 &&
+             (!('authorName' in data) || (data.authorName is string && data.authorName.size() <= 60)) &&
+             (!('authorAvatarUrl' in data) || (data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 1000));
+    }
+
+    function isValidLike(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.publicationId is string && data.publicationId.size() <= 128;
+    }
+
+    function isValidSubscription(data) {
+      return data.subscriberId is string && data.subscriberId == request.auth.uid &&
+             data.channelUserId is string && data.channelUserId.size() <= 128 &&
+             (!('channelName' in data) || (data.channelName is string && data.channelName.size() <= 60));
+    }
+
+    function isValidReport(data) {
+      return data.publicationId is string && data.publicationId.size() <= 128 &&
+             data.reportedByUserId is string && data.reportedByUserId == request.auth.uid &&
+             data.reason is string && data.reason.size() >= 2 && data.reason.size() <= 100 &&
+             data.status in ['pending', 'resolved', 'dismissed'] &&
+             (!('publicationTitle' in data) || (data.publicationTitle is string && data.publicationTitle.size() <= 150)) &&
+             (!('reporterEmail' in data) || (data.reporterEmail is string && data.reporterEmail.size() <= 120)) &&
+             (!('details' in data) || (data.details is string && data.details.size() <= 1000));
+    }
+
+    // --- USERS COLLECTION ---
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       // Prevent user from self-assigning admin role
+                       (incoming().role == 'user' || (isAdmin() && incoming().role == 'admin')) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       (request.auth.uid == userId || isAdmin()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (isAdmin() || incoming().role == existing().role) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatarUrl', 'bio', 'role', 'subscriberCount', 'updatedAt']);
+
+      allow delete: if isAdmin();
+    }
+
+    // --- PUBLICATIONS COLLECTION ---
+    match /publications/{publicationId} {
+      allow get: if resource.data.status == 'approved' ||
+                    (isSignedIn() && (resource.data.authorId == request.auth.uid || isAdmin()));
+
+      allow list: if resource.data.status == 'approved' ||
+                     (isSignedIn() && (resource.data.authorId == request.auth.uid || isAdmin()));
+
+      allow create: if isSignedIn() &&
+                       isValidId(publicationId) &&
+                       incoming().authorId == request.auth.uid &&
+                       (isAdmin() || incoming().status == 'pending') &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidPublication(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(publicationId) &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidPublication(incoming()) && (
+                         // Admin moderation
+                         isAdmin() ||
+                         // Author edit (resets to pending)
+                         (resource.data.authorId == request.auth.uid &&
+                          incoming().status == 'pending' &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'type', 'externalUrl', 'thumbnailUrl', 'content', 'tags', 'status', 'updatedAt'])) ||
+                         // Counter updates for approved publications
+                         (resource.data.status == 'approved' &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['viewsCount', 'likesCount', 'commentsCount', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() &&
+                       (resource.data.authorId == request.auth.uid || isAdmin());
+
+      // --- SUBCOLLECTION: COMMENTS ---
+      match /comments/{commentId} {
+        allow get, list: if true;
+        allow create: if isSignedIn() &&
+                         isValidId(commentId) &&
+                         incoming().authorId == request.auth.uid &&
+                         incoming().publicationId == publicationId &&
+                         incoming().createdAt is timestamp &&
+                         incoming().createdAt <= request.time &&
+                         isValidComment(incoming());
+        allow update: if isSignedIn() &&
+                         (resource.data.authorId == request.auth.uid || isAdmin()) &&
+                         incoming().authorId == existing().authorId &&
+                         incoming().publicationId == existing().publicationId &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidComment(incoming()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['content', 'updatedAt']);
+        allow delete: if isSignedIn() &&
+                         (resource.data.authorId == request.auth.uid || isAdmin());
+      }
+
+      // --- SUBCOLLECTION: LIKES ---
+      match /likes/{userId} {
+        allow get, list: if true;
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().publicationId == publicationId &&
+                         incoming().createdAt is timestamp &&
+                         incoming().createdAt <= request.time &&
+                         isValidLike(incoming());
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    // --- SUBSCRIPTIONS COLLECTION ---
+    match /subscriptions/{subscriptionId} {
+      allow get, list: if isSignedIn() && (resource.data.subscriberId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       incoming().subscriberId == request.auth.uid &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidSubscription(incoming());
+      allow delete: if isSignedIn() && (resource.data.subscriberId == request.auth.uid || isAdmin());
+    }
+
+    // --- REPORTS COLLECTION ---
+    match /reports/{reportId} {
+      allow get, list: if isSignedIn() && (resource.data.reportedByUserId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       incoming().reportedByUserId == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       isValidReport(incoming());
+      allow update: if isAdmin() &&
+                       isValidReport(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // --- ADMINS COLLECTION ---
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

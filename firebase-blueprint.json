@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Profil utilisateur de la plateforme Bright Video",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID Firebase de l'utilisateur" },
+        "email": { "type": "string", "description": "Email de l'utilisateur" },
+        "displayName": { "type": "string", "description": "Nom affiché" },
+        "avatarUrl": { "type": "string", "description": "URL de photo de profil" },
+        "bio": { "type": "string", "description": "Biographie courte" },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "Rôle système" },
+        "subscriberCount": { "type": "integer", "description": "Nombre d'abonnés" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "createdAt"]
+    },
+    "Publication": {
+      "title": "Publication",
+      "description": "Publication multimédia soumise par un créateur ou l'administrateur",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Titre du contenu" },
+        "description": { "type": "string", "description": "Courte description" },
+        "type": { "type": "string", "enum": ["video", "tutorial", "article", "music", "download", "document", "photo"], "description": "Type de contenu" },
+        "category": { "type": "string", "description": "Catégorie thématique" },
+        "externalUrl": { "type": "string", "description": "Lien externe sécurisé vers la vidéo, le média ou le téléchargement" },
+        "thumbnailUrl": { "type": "string", "description": "Lien d'illustration ou miniature" },
+        "content": { "type": "string", "description": "Corps de texte pour les articles et tutoriels" },
+        "authorId": { "type": "string", "description": "Identifiant de l'auteur" },
+        "authorName": { "type": "string", "description": "Nom de l'auteur" },
+        "authorAvatarUrl": { "type": "string", "description": "Avatar de l'auteur" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Statut de modération" },
+        "rejectionReason": { "type": "string", "description": "Motif de refus si rejeté" },
+        "viewsCount": { "type": "integer", "description": "Nombre de vues" },
+        "likesCount": { "type": "integer", "description": "Nombre de mentions J'aime" },
+        "commentsCount": { "type": "integer", "description": "Nombre de commentaires" },
+        "tags": { "type": "array", "description": "Mots-clés associés" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "type", "category", "externalUrl", "authorId", "status", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Commentaire associé à une publication",
+      "type": "object",
+      "properties": {
+        "publicationId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorAvatarUrl": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["publicationId", "authorId", "content", "createdAt"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "Mention J'aime sur une publication",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "publicationId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "publicationId", "createdAt"]
+    },
+    "Subscription": {
+      "title": "Subscription",
+      "description": "Abonnement à une chaîne ou créateur",
+      "type": "object",
+      "properties": {
+        "subscriberId": { "type": "string" },
+        "channelUserId": { "type": "string" },
+        "channelName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["subscriberId", "channelUserId", "createdAt"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "Signalement de contenu abusif ou inapproprié",
+      "type": "object",
+      "properties": {
+        "publicationId": { "type": "string" },
+        "publicationTitle": { "type": "string" },
+        "reportedByUserId": { "type": "string" },
+        "reporterEmail": { "type": "string" },
+        "reason": { "type": "string" },
+        "details": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "resolved", "dismissed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["publicationId", "reportedByUserId", "reason", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Profils des utilisateurs inscrits"
+    },
+    "/publications/{publicationId}": {
+      "schema": "Publication",
+      "description": "Publications multimédias publiques et modérées"
+    },
+    "/publications/{publicationId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Commentaires sur les publications"
+    },
+    "/publications/{publicationId}/likes/{userId}": {
+      "schema": "Like",
+      "description": "Mentions J'aime uniques par utilisateur"
+    },
+    "/subscriptions/{subscriptionId}": {
+      "schema": "Subscription",
+      "description": "Abonnements entre utilisateurs"
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Signalements de contenus pour la modération"
+    }
+  }
+}
